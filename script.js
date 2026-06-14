@@ -334,39 +334,68 @@ if (btnSendChat) btnSendChat.addEventListener('click', fetchChatInsight);
 
 async function fetchChatInsight() {
     if (!chatInput.value) return alert("Pilih pertanyaan cepat di bawah!");
-    chatOutput.innerHTML = `<div style="color: #4318ff; font-weight: 600; text-align:center;"><i class='bx bx-loader-alt bx-spin'></i> Menganalisis data...</div>`;
+    chatOutput.innerHTML = `<div style="color: #4318ff; font-weight: 600; text-align:center;"><i class='bx bx-loader-alt bx-spin'></i> Menganalisis data mendalam...</div>`;
 
-    let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." :
-        selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
-
-    // 1. HITUNG RINGKASAN DATA SAAT INI UNTUK AI
+    // 1. HITUNG RINGKASAN DATA & KELOMPOKKAN (Agar AI tidak halusinasi)
     let totalSalesAI = 0, totalProfitAI = 0;
+    const catSales = {}; const regionSales = {};
+
     filteredData.forEach(row => {
         totalSalesAI += row.Sales || 0;
         totalProfitAI += row.Profit || 0;
+
+        // Kelompokkan profit berdasarkan kategori dan region
+        if (row.Category) catSales[row.Category] = (catSales[row.Category] || 0) + (row.Profit || 0);
+        if (row.Territory) regionSales[row.Territory] = (regionSales[row.Territory] || 0) + (row.Profit || 0);
     });
+
     let profitMarginAI = totalSalesAI > 0 ? ((totalProfitAI / totalSalesAI) * 100).toFixed(2) : 0;
 
-    // 2. RANGKAI KONTEKS DATA
-    const konteksData = `[DATA DASHBOARD AKTIF: Total Sales = $${totalSalesAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Total Profit = $${totalProfitAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Profit Margin = ${profitMarginAI}%]`;
+    // Cari Kategori dan Region dengan Profit tertinggi saat ini
+    const sortedCats = Object.entries(catSales).sort((a, b) => b[1] - a[1]);
+    const sortedRegions = Object.entries(regionSales).sort((a, b) => b[1] - a[1]);
 
-    // 3. GABUNGKAN KONTEKS KE DALAM PROMPT
-    const promptData = `Anda adalah Asisten AI Data Analyst. \n${konteksData}\nPengguna bertanya: "${chatInput.value}". \nInstruksi: ${instruksiKhusus}. Berdasarkan data dashboard aktif di atas, berikan jawaban singkat, padat, dan analitik yang relevan. Format HTML <p> dan <ul><li>.`;
+    let topCatContext = sortedCats.length > 0 ? `${sortedCats[0][0]} (Profit: $${sortedCats[0][1].toLocaleString("en-US", { minimumFractionDigits: 2 })})` : "-";
+    let topRegionContext = sortedRegions.length > 0 ? `${sortedRegions[0][0]} (Profit: $${sortedRegions[0][1].toLocaleString("en-US", { minimumFractionDigits: 2 })})` : "-";
+
+    // 2. RANGKAI KONTEKS DATA YANG LEBIH KAYA
+    const konteksData = `[DATA DASHBOARD AKTIF: Total Sales = $${totalSalesAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Total Profit = $${totalProfitAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Profit Margin = ${profitMarginAI}%. Kategori Terbaik = ${topCatContext}. Region Terbaik = ${topRegionContext}]`;
+
+    let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Bandingkan profit margin dan sebutkan Kategori Terbaik berdasarkan data." :
+        selectedPromptType === "Masalah region?" ? "Fokuskan pada performa logistik/penjualan di Region Terbaik berdasarkan data." :
+            "Berikan rekomendasi promosi bulan depan berdasarkan total metrik yang ada.";
+
+    // 3. PROMPT SUPER KETAT UNTUK MATA UANG & RELEVANSI
+    const promptData = `
+    Anda adalah Asisten AI Data Analyst. 
+    ${konteksData}
+    
+    Pengguna bertanya: "${chatInput.value}". 
+    Instruksi: ${instruksiKhusus}. 
+    
+    ATURAN WAJIB: 
+    1. Jawaban HARUS merujuk pada angka di [DATA DASHBOARD AKTIF] di atas. Jangan mengarang angka.
+    2. Format SEMUA angka mata uang dengan rapi menggunakan simbol dollar dan pemisah ribuan (Contoh: $1,234.56).
+    3. Gunakan tag HTML <p> dan <ul><li> untuk merapikan jawaban. Jangan gunakan markdown.
+    `;
 
     try {
         const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ promptData: promptData, temperature: 0.4 })
+            body: JSON.stringify({ promptData: promptData, temperature: 0.3 }) // Suhu diturunkan agar lebih matematis dan tidak ngarang
         });
+
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Gagal memuat dari backend Vercel.");
 
         let aiText = data.choices[0].message.content;
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(
-            /```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+        // Pembersih teks sisa markdown
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
         chatOutput.innerHTML = aiText;
     } catch (error) {
-        chatOutput.innerHTML = `< p style = "color: #e74c3c;" > <i class='bx bx-error'></i> Error: ${ error.message }</p > `;
+        chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
     }
 }
