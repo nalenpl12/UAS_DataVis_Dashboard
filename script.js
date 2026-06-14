@@ -261,7 +261,7 @@ async function fetchAIInsights(totalSales, overallMargin, topPerformer, anomalyI
     `;
 
     try {
-        const response = await fetch("/API/chat", {
+        const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
@@ -298,7 +298,7 @@ async function fetchAnomalyNarrative() {
     const promptData = `Sebagai analis keuangan, jelaskan logis (maksimal 2 paragraf) mengapa produk ini merugi:\n${textAnomali}\nFormat MURNI tag HTML <p> dan <strong>.`;
 
     try {
-        const response = await fetch("/API/chat", {
+        const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
@@ -342,7 +342,7 @@ async function fetchChatInsight() {
     const promptData = `Anda adalah Asisten AI. Pengguna bertanya: "${chatInput.value}". Instruksi: ${instruksiKhusus}. Format HTML <p> dan <ul><li>.`;
 
     try {
-        const response = await fetch("/API/chat", {
+        const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ promptData: promptData, temperature: 0.4 })
