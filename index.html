@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Performance Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+
+<body>
+    <main class="main-content">
+        <header class="modern-header">
+            <div class="header-left">
+                <div>
+                    <h1>Executive Sales Dashboard</h1>
+                    <p class="subtitle">Overview performa bisnis & analitik by Nalendra Pradipta Loka</p>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="header-filters">
+                    <div class="filter-group">
+                        <label for="categoryFilter"><i class='bx bx-category'></i> Category:</label>
+                        <div class="select-wrapper">
+                            <select id="categoryFilter" class="modern-select">
+                                <option value="All">Semua Category</option>
+                            </select>
+                            <i class='bx bx-chevron-down select-icon'></i>
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="regionFilter"><i class='bx bx-map-alt'></i> Region:</label>
+                        <div class="select-wrapper">
+                            <select id="regionFilter" class="modern-select">
+                                <option value="All">Semua Wilayah</option>
+                            </select>
+                            <i class='bx bx-chevron-down select-icon'></i>
+                        </div>
+                    </div>
+                </div>
+                <a href="tableau.html" class="tableau-btn"><i class='bx bxs-dashboard'></i> Lihat Tableau</a>
+            </div>
+        </header>
+
+        <div class="dashboard-body">
+            <section class="kpi-section">
+                <div class="kpi-card">
+                    <div class="kpi-icon sales-icon"><i class='bx bx-dollar-circle'></i></div>
+                    <div class="kpi-info">
+                        <h3>Total Sales</h3>
+                        <p id="kpi-sales" class="kpi-value">$0</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon profit-icon"><i class='bx bx-line-chart'></i></div>
+                    <div class="kpi-info">
+                        <h3>Total Profit</h3>
+                        <p id="kpi-profit" class="kpi-value">$0</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon margin-icon"><i class='bx bx-pie-chart-alt-2'></i></div>
+                    <div class="kpi-info">
+                        <h3>Profit Margin</h3>
+                        <p id="kpi-margin" class="kpi-value">0%</p>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon qty-icon"><i class='bx bx-package'></i></div>
+                    <div class="kpi-info">
+                        <h3>Total Qty Sold</h3>
+                        <p id="kpi-qty" class="kpi-value">0</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="charts-section">
+                <div class="chart-container">
+                    <h3><i class='bx bx-bar-chart-square'></i> Sales by Sub-Category</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <h3><i class='bx bx-trending-up'></i> Tren Sales & Profit</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="lineChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <h3><i class='bx bx-globe'></i> Profit Margin per Wilayah (%)</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="territoryChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <h3><i class='bx bx-trophy'></i> Top 10 Produk Paling Menguntungkan (Profit)</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="productChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section class="anomaly-table-section">
+                <div class="anomaly-header">
+                    <h3><i class='bx bx-table'></i> Tabel Deteksi Anomali Kinerja</h3>
+                    <button id="btn-narasi-ai" class="ai-btn"><i class='bx bx-bot'></i> Narasi AI</button>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="anomalyTable">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Sub-Category</th>
+                                <th>Total Sales</th>
+                                <th>Total Profit</th>
+                                <th>Profit Margin</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anomaly-table-body">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="anomaly-narrative-box" class="anomaly-narrative-box hidden">
+                </div>
+            </section>
+
+            <section class="insight-section">
+                <h2><i class='bx bx-brain'></i> Analisis & Rekomendasi AI</h2>
+                <div id="insight-text" class="insight-box">
+                    <p><i>Memuat analisis data...</i></p>
+                </div>
+            </section>
+        </div>
+        <!-- ========================================== -->
+        <!-- FITUR PRE-DEFINED AI CHAT -->
+        <!-- ========================================== -->
+        <section class="ai-chat-section">
+            <div class="ai-chat-card">
+                <!-- Header Chat -->
+                <div class="ai-chat-header">
+                    <h3><i class='bx bx-bot'></i> Tanya AI Asisten</h3>
+                    <span class="ai-badge">Llama 3.1</span>
+                </div>
+
+                <!-- Kotak Hasil Jawaban AI -->
+                <div class="ai-chat-output" id="ai-chat-output">
+                    <p class="placeholder-text"><i class='bx bx-message-square-dots'></i><br>Silakan pilih pertanyaan di
+                        bawah untuk mulai menganalisis data...</p>
+                </div>
+
+                <!-- Area Input & Tombol Kirim -->
+                <div class="ai-chat-input-area">
+                    <input type="text" id="ai-chat-input" readonly placeholder="Pilih topik pertanyaan di bawah...">
+                    <button id="btn-send-chat" class="btn-send"><i class='bx bx-send'></i> Minta Insight</button>
+                </div>
+
+                <!-- Tombol Cepat (Suggested Prompts) -->
+                <div class="ai-chat-prompts">
+                    <span class="prompt-label">Cepat:</span>
+                    <button class="prompt-pill"
+                        data-question="Kategori mana yang harus diprioritaskan untuk profit?">Prioritas profit?</button>
+                    <button class="prompt-pill"
+                        data-question="Bagaimana evaluasi performa wilayah (region) saat ini?">Masalah region?</button>
+                    <button class="prompt-pill"
+                        data-question="Berikan rekomendasi taktis untuk bulan depan!">Rekomendasi?</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
