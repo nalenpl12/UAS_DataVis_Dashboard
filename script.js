@@ -32,7 +32,7 @@ function loadData() {
             updateKPIs();
             updateCharts();
             generateInsights();
-            
+
             document.getElementById("categoryFilter").addEventListener("change", applyFilters);
             document.getElementById("regionFilter").addEventListener("change", applyFilters);
         },
@@ -174,15 +174,20 @@ function updateCharts() {
     });
 }
 
+
 // ==========================================
-// 4. TABEL ANOMALI & AI AGENT (VERCEL BACKEND)
+// 4. FUNGSI AI TERPUSAT (DIRECT GROQ API)
 // ==========================================
+
+// ⚠️ WAJIB: MASUKKAN API KEY GROQ ANDA DI SINI (Diawali gsk_)
+const GROQ_API_KEY = "GANTI_DENGAN_API_KEY_GROQ_ANDA";
+
 function generateInsights() {
     const tableBody = document.getElementById("anomaly-table-body");
     currentAnomalies = [];
 
     if (filteredData.length === 0) {
-        document.getElementById("insight-text").innerHTML = "<p><i>Tidak ada data untuk dianalisis pada filter ini.</i></p>";
+        document.getElementById("insight-text").innerHTML = "<p><i>Tidak ada data untuk dianalisis.</i></p>";
         tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Tidak ada data tersedia</td></tr>";
         return;
     }
@@ -213,7 +218,6 @@ function generateInsights() {
         if (stats.profit < 0) {
             anomalyCount++;
             const margin = stats.sales > 0 ? ((stats.profit / stats.sales) * 100).toFixed(2) : 0;
-
             currentAnomalies.push({ category: stats.category, name: subCat, sales: stats.sales, profit: stats.profit, margin: margin });
 
             tableHtml += `
@@ -237,7 +241,7 @@ function generateInsights() {
     document.getElementById("anomaly-narrative-box").classList.add("hidden");
 
     if (anomalyCount === 0) {
-        tableHtml = `<tr><td colspan='6' style='text-align: center; color: #01b574; font-weight: 600; padding: 24px;'>✅ Unit Ekonomi Stabil. Tidak ditemukan kebocoran margin pada seluruh portofolio.</td></tr>`;
+        tableHtml = `<tr><td colspan='6' style='text-align: center; color: #01b574; font-weight: 600; padding: 24px;'>✅ Unit Ekonomi Stabil. Tidak ditemukan kebocoran margin.</td></tr>`;
     }
     tableBody.innerHTML = tableHtml;
 
@@ -250,49 +254,55 @@ async function fetchAIInsights(totalSales, overallMargin, topPerformer, anomalyI
     insightBox.innerHTML = `<div style="color: #4318ff; font-weight: 600;"><i class='bx bx-loader-alt bx-spin'></i> AI Agent sedang merangkai narasi...</div>`;
 
     const promptData = `
-    Bertindaklah sebagai konsultan strategi bisnis senior. Buatlah analisis mendalam dengan pendekatan storytelling, ringkasan eksekutif, dan rencana aksi strategis berdasarkan data operasional berikut:
+    Bertindaklah sebagai konsultan strategi bisnis senior. Buatlah analisis mendalam berdasarkan data operasional berikut:
     - Gross Revenue: ${formatCurrency(totalSales)}
     - Blended Profit Margin: ${overallMargin}%
     - Produk Andalan: ${topPerformer ? topPerformer[0] : '-'}
     - Anomali: ${anomalyItem ? `${anomalyItem.name} rugi ${formatCurrency(Math.abs(anomalyItem.profit))}` : 'Aman.'}
 
-    Buatlah tepat 3 poin dalam format HTML <li> dengan ketentuan gaya bahasa sebagai berikut:
+    Buatlah tepat 3 poin dalam format HTML <li>:
     1. <li><strong>📖 Business Storytelling:</strong> (Gunakan analogi bisnis untuk kondisi saat ini).</li>
     2. <li><strong>📊 Executive Summary:</strong> (Ringkasan metrik).</li>
     3. <li><strong>💡 Strategic Action Plan:</strong> (Rekomendasi aksi).</li>
-    
-    Format MURNI HANYA 3 baris tag HTML <li> saja. DILARANG menggunakan awalan markdown HTML.
+    Format MURNI HANYA 3 baris tag HTML <li> saja.
     `;
 
     try {
-        const response = await fetch("/api/chat", {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
+            headers: {
+                "Authorization": `Bearer ${GROQ_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "llama-3.1-8b-instant",
+                messages: [{ role: "user", content: promptData }],
+                temperature: 0.5
+            })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
+        if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
 
         let aiText = data.choices[0].message.content;
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-        aiText = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         if (!aiText.includes("<li>")) {
             aiText = aiText.split('\n').filter(line => line.trim() !== '').map(line => `<li>${line.replace(/^[-*]\s*/, '')}</li>`).join('');
         }
         insightBox.innerHTML = `<ul class="insight-list">${aiText}</ul>`;
     } catch (error) {
-        insightBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Mohon jalankan di link Vercel, bukan Live Server.</p>`;
+        insightBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
     }
 }
 
-// AI: NARASI TABEL
+// AI: NARASI TABEL ANOMALI
 document.getElementById("btn-narasi-ai").addEventListener("click", fetchAnomalyNarrative);
+
 async function fetchAnomalyNarrative() {
     const narrativeBox = document.getElementById("anomaly-narrative-box");
     narrativeBox.classList.remove("hidden");
 
     if (currentAnomalies.length === 0) {
-        narrativeBox.innerHTML = "<p style='color: #01b574;'><i class='bx bx-check-circle'></i> Aman. Tidak ada anomali.</p>";
+        narrativeBox.innerHTML = "<p style='color: #01b574;'><i class='bx bx-check-circle'></i> Aman. Tidak ada anomali yang perlu dievaluasi.</p>";
         return;
     }
 
@@ -302,18 +312,26 @@ async function fetchAnomalyNarrative() {
     const promptData = `Sebagai analis keuangan, jelaskan logis (maksimal 2 paragraf) mengapa produk ini merugi:\n${textAnomali}\nFormat MURNI tag HTML <p> dan <strong>.`;
 
     try {
-        const response = await fetch("/api/chat", {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
+            headers: {
+                "Authorization": `Bearer ${GROQ_API_KEY}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "llama-3.1-8b-instant",
+                messages: [{ role: "user", content: promptData }],
+                temperature: 0.5
+            })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
+        if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
+
         let aiText = data.choices[0].message.content;
         aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         narrativeBox.innerHTML = aiText;
     } catch (error) {
-        narrativeBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Jalankan di link Vercel.</p>`;
+        narrativeBox.innerHTML = `< p style = "color: #e74c3c;" > <i class='bx bx-error'></i> Error: ${ error.message }</p > `;
     }
 }
 
@@ -333,29 +351,37 @@ promptPills.forEach(pill => {
     });
 });
 
-if(btnSendChat) btnSendChat.addEventListener('click', fetchChatInsight);
+if (btnSendChat) btnSendChat.addEventListener('click', fetchChatInsight);
 
 async function fetchChatInsight() {
     if (!chatInput.value) return alert("Pilih pertanyaan cepat di bawah!");
-    chatOutput.innerHTML = `<div style="color: #4318ff; font-weight: 600; text-align:center;"><i class='bx bx-loader-alt bx-spin'></i> Menganalisis...</div>`;
+    chatOutput.innerHTML = `< div style = "color: #4318ff; font-weight: 600; text-align:center;" > <i class='bx bx-loader-alt bx-spin'></i> Menganalisis data...</div > `;
 
     let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." : 
-selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
+    selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
 
-    const promptData =   `Anda adalah Asisten AI. Pengguna bertanya: "${chatInput.value}". Instruksi: ${instruksiKhusus}. Format HTML <p> dan <ul><li>.`;
+    const promptData = `Anda adalah Asisten AI.Pengguna bertanya: "${chatInput.value}".Instruksi: ${ instruksiKhusus }.Format HTML < p > dan < ul > <li>.`;
 
-    try {
-        const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ promptData: promptData, temperature: 0.4 })
+            try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+            headers: {
+                "Authorization": `Bearer ${GROQ_API_KEY}`,
+            "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "llama-3.1-8b-instant",
+            messages: [{role: "user", content: promptData }],
+            temperature: 0.4
+            })
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
-        let aiText = data.choices[0].message.content;
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        chatOutput.innerHTML = aiText;
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
+
+            let aiText = data.choices[0].message.content;
+            aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            chatOutput.innerHTML = aiText;
     } catch (error) {
-        chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Jalankan di link Vercel.</p>`;
+                chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
     }
 }
