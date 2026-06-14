@@ -92,7 +92,6 @@ function updateKPIs() {
 function updateCharts() {
     Chart.defaults.color = "#718096";
 
-    // 1. Bar Chart
     const salesBySubCat = {};
     filteredData.forEach(row => {
         if (row.SubCategory) salesBySubCat[row.SubCategory] = (salesBySubCat[row.SubCategory] || 0) + (row.Sales || 0);
@@ -109,7 +108,6 @@ function updateCharts() {
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    // 2. Line Chart
     const trendData = {};
     filteredData.forEach(row => {
         if (row.OrderDate) {
@@ -135,7 +133,6 @@ function updateCharts() {
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
     });
 
-    // 3. Territory Chart
     const territoryData = {};
     filteredData.forEach(row => {
         if (row.Territory) {
@@ -156,7 +153,6 @@ function updateCharts() {
         options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    // 4. Product Chart
     const productProfit = {};
     filteredData.forEach(row => {
         if (row.ProductName) productProfit[row.ProductName] = (productProfit[row.ProductName] || 0) + (row.Profit || 0);
@@ -176,11 +172,8 @@ function updateCharts() {
 
 
 // ==========================================
-// 4. FUNGSI AI TERPUSAT (DIRECT GROQ API)
+// 4. TABEL ANOMALI & AI AGENT (VERCEL BACKEND)
 // ==========================================
-
-// ⚠️ WAJIB: MASUKKAN API KEY GROQ ANDA DI SINI (Diawali gsk_)
-const GROQ_API_KEY = "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";
 
 function generateInsights() {
     const tableBody = document.getElementById("anomaly-table-body");
@@ -268,20 +261,13 @@ async function fetchAIInsights(totalSales, overallMargin, topPerformer, anomalyI
     `;
 
     try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const response = await fetch("/api/chat", {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [{ role: "user", content: promptData }],
-                temperature: 0.5
-            })
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
+        if (!response.ok) throw new Error(data.error || "Gagal memuat dari backend Vercel.");
 
         let aiText = data.choices[0].message.content;
         aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -312,26 +298,19 @@ async function fetchAnomalyNarrative() {
     const promptData = `Sebagai analis keuangan, jelaskan logis (maksimal 2 paragraf) mengapa produk ini merugi:\n${textAnomali}\nFormat MURNI tag HTML <p> dan <strong>.`;
 
     try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const response = await fetch("/api/chat", {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-                messages: [{ role: "user", content: promptData }],
-                temperature: 0.5
-            })
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
+        if (!response.ok) throw new Error(data.error || "Gagal memuat dari backend Vercel.");
 
         let aiText = data.choices[0].message.content;
         aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         narrativeBox.innerHTML = aiText;
     } catch (error) {
-        narrativeBox.innerHTML = `< p style = "color: #e74c3c;" > <i class='bx bx-error'></i> Error: ${ error.message }</p > `;
+        narrativeBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
     }
 }
 
@@ -355,33 +334,26 @@ if (btnSendChat) btnSendChat.addEventListener('click', fetchChatInsight);
 
 async function fetchChatInsight() {
     if (!chatInput.value) return alert("Pilih pertanyaan cepat di bawah!");
-    chatOutput.innerHTML = `< div style = "color: #4318ff; font-weight: 600; text-align:center;" > <i class='bx bx-loader-alt bx-spin'></i> Menganalisis data...</div > `;
+    chatOutput.innerHTML = `<div style="color: #4318ff; font-weight: 600; text-align:center;"><i class='bx bx-loader-alt bx-spin'></i> Menganalisis data...</div>`;
 
-    let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." : 
-    selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
+    let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." :
+        selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
 
-    const promptData = `Anda adalah Asisten AI.Pengguna bertanya: "${chatInput.value}".Instruksi: ${ instruksiKhusus }.Format HTML < p > dan < ul > <li>.`;
+    const promptData = `Anda adalah Asisten AI. Pengguna bertanya: "${chatInput.value}". Instruksi: ${instruksiKhusus}. Format HTML <p> dan <ul><li>.`;
 
-            try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                method: "POST",
-            headers: {
-                "Authorization": `Bearer ${GROQ_API_KEY}`,
-            "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
-            messages: [{role: "user", content: promptData }],
-            temperature: 0.4
-            })
+    try {
+        const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ promptData: promptData, temperature: 0.4 })
         });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error?.message || "Koneksi API Groq gagal.");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Gagal memuat dari backend Vercel.");
 
-            let aiText = data.choices[0].message.content;
-            aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            chatOutput.innerHTML = aiText;
+        let aiText = data.choices[0].message.content;
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        chatOutput.innerHTML = aiText;
     } catch (error) {
-                chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
+        chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
     }
 }
