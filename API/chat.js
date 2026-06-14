@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function (req, res) {
     // Hanya izinkan metode POST
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Metode tidak diizinkan' });
@@ -8,11 +8,10 @@ export default async function handler(req, res) {
     const { promptData, temperature } = req.body;
 
     try {
-        // Panggil server Groq dari dalam server Vercel (Sangat Aman)
+        // Panggil server Groq
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
-                // Mengambil kunci rahasia dari Environment Variable Vercel
                 "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
                 "Content-Type": "application/json"
             },
@@ -34,4 +33,4 @@ export default async function handler(req, res) {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
-}
+};
