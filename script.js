@@ -180,7 +180,7 @@ function updateCharts() {
 // ==========================================
 
 // ⚠️ WAJIB: MASUKKAN API KEY GROQ ANDA DI SINI (Diawali gsk_)
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = "";
 
 function generateInsights() {
     const tableBody = document.getElementById("anomaly-table-body");
