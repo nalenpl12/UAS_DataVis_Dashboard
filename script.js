@@ -31,14 +31,14 @@ function loadData() {
             populateFilters();
             updateKPIs();
             updateCharts();
-            generateInsights(); // <--- Panggil AI & Tabel saat pertama kali web dibuka
-
+            generateInsights();
+            
             document.getElementById("categoryFilter").addEventListener("change", applyFilters);
             document.getElementById("regionFilter").addEventListener("change", applyFilters);
         },
         error: function (err) {
             console.error("Error loading CSV:", err);
-            alert("Gagal memuat data. Pastikan jalan lewat Live Server.");
+            alert("Gagal memuat data CSV.");
         }
     });
 }
@@ -66,7 +66,7 @@ function applyFilters() {
 
     updateKPIs();
     updateCharts();
-    generateInsights(); // <--- Update tabel & panggil AI lagi setiap filter diubah
+    generateInsights();
 }
 
 // ==========================================
@@ -92,12 +92,10 @@ function updateKPIs() {
 function updateCharts() {
     Chart.defaults.color = "#718096";
 
-    // 1. Bar Chart (Top 10 SubCategory)
+    // 1. Bar Chart
     const salesBySubCat = {};
     filteredData.forEach(row => {
-        if (row.SubCategory) {
-            salesBySubCat[row.SubCategory] = (salesBySubCat[row.SubCategory] || 0) + (row.Sales || 0);
-        }
+        if (row.SubCategory) salesBySubCat[row.SubCategory] = (salesBySubCat[row.SubCategory] || 0) + (row.Sales || 0);
     });
     const sortedSubCats = Object.entries(salesBySubCat).sort((a, b) => b[1] - a[1]).slice(0, 10);
     const barCtx = document.getElementById('barChart').getContext('2d');
@@ -111,7 +109,7 @@ function updateCharts() {
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    // 2. Line Chart (Tren Sales & Profit)
+    // 2. Line Chart
     const trendData = {};
     filteredData.forEach(row => {
         if (row.OrderDate) {
@@ -137,7 +135,7 @@ function updateCharts() {
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
     });
 
-    // 3. Horizontal Bar (Territory Profit Margin)
+    // 3. Territory Chart
     const territoryData = {};
     filteredData.forEach(row => {
         if (row.Territory) {
@@ -158,12 +156,10 @@ function updateCharts() {
         options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    // 4. Horizontal Bar (Top 10 Product by Profit)
+    // 4. Product Chart
     const productProfit = {};
     filteredData.forEach(row => {
-        if (row.ProductName) {
-            productProfit[row.ProductName] = (productProfit[row.ProductName] || 0) + (row.Profit || 0);
-        }
+        if (row.ProductName) productProfit[row.ProductName] = (productProfit[row.ProductName] || 0) + (row.Profit || 0);
     });
     const sortedProducts = Object.entries(productProfit).sort((a, b) => b[1] - a[1]).slice(0, 10);
     const productCtx = document.getElementById('productChart').getContext('2d');
@@ -179,131 +175,153 @@ function updateCharts() {
 }
 
 // ==========================================
-// 5. FUNGSI TOMBOL ON-DEMAND NARASI AI 
+// 4. TABEL ANOMALI & AI AGENT (VERCEL BACKEND)
 // ==========================================
-document.getElementById("btn-narasi-ai").addEventListener("click", fetchAnomalyNarrative);
+function generateInsights() {
+    const tableBody = document.getElementById("anomaly-table-body");
+    currentAnomalies = [];
 
-async function fetchAnomalyNarrative() {
-    const narrativeBox = document.getElementById("anomaly-narrative-box");
-
-    narrativeBox.classList.remove("hidden");
-
-    if (currentAnomalies.length === 0) {
-        narrativeBox.innerHTML = "<p style='color: #01b574; font-weight: 600;'><i class='bx bx-check-circle'></i> Luar biasa! Tidak ada kebocoran margin atau anomali pada data saat ini. Tidak perlu evaluasi khusus.</p>";
+    if (filteredData.length === 0) {
+        document.getElementById("insight-text").innerHTML = "<p><i>Tidak ada data untuk dianalisis pada filter ini.</i></p>";
+        tableBody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Tidak ada data tersedia</td></tr>";
         return;
     }
 
-    narrativeBox.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; color: #e74c3c; font-weight: 600;">
-            <i class='bx bx-loader-alt bx-spin' style="font-size: 20px;"></i> 
-            AI sedang menginvestigasi penyebab anomali...
-        </div>`;
+    const subCatStats = {};
+    let totalSales = 0, totalProfit = 0;
 
-    let textAnomali = currentAnomalies.map(item =>
-        `- ${item.category} (${item.name}): Penjualan ${formatCurrency(item.sales)}, tapi Rugi ${formatCurrency(Math.abs(item.profit))} (Margin ${item.margin}%)`
-    ).join("\n");
+    filteredData.forEach(row => {
+        totalSales += row.Sales || 0;
+        totalProfit += row.Profit || 0;
+        if (row.SubCategory) {
+            if (!subCatStats[row.SubCategory]) subCatStats[row.SubCategory] = { category: row.Category || '-', sales: 0, profit: 0 };
+            subCatStats[row.SubCategory].sales += row.Sales || 0;
+            subCatStats[row.SubCategory].profit += row.Profit || 0;
+        }
+    });
 
-    const promptData = `
-    Sebagai analis keuangan senior, berikan penjelasan investigatif yang logis (maksimal 2 paragraf pendek) mengapa kelompok produk berikut mengalami anomali (Penjualan tinggi namun merugi):
-    
-    ${textAnomali}
-    
-    Berikan narasi deskriptif langsung ke intinya. Format MURNI tag HTML (Gunakan <p> dan <strong>). Jangan gunakan markdown. Gunakan bahasa Indonesia profesional.
-    `;
+    const overallMargin = totalSales > 0 ? ((totalProfit / totalSales) * 100).toFixed(2) : 0;
+    let tableHtml = "";
+    let anomalyCount = 0;
+    let anomalyItem = null;
+    let highestLoss = 0;
 
-    try {
-        const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
-        });
+    const sortedSubCatEntries = Object.entries(subCatStats).sort((a, b) => a[1].profit - b[1].profit);
+    let topPerformer = Object.entries(subCatStats).sort((a, b) => b[1].profit - a[1].profit)[0];
 
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
+    sortedSubCatEntries.forEach(([subCat, stats]) => {
+        if (stats.profit < 0) {
+            anomalyCount++;
+            const margin = stats.sales > 0 ? ((stats.profit / stats.sales) * 100).toFixed(2) : 0;
 
-        let aiText = data.choices[0].message.content;
+            currentAnomalies.push({ category: stats.category, name: subCat, sales: stats.sales, profit: stats.profit, margin: margin });
 
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-        aiText = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            tableHtml += `
+                <tr>
+                    <td>${stats.category}</td>
+                    <td><strong>${subCat}</strong></td>
+                    <td>${formatCurrency(stats.sales)}</td>
+                    <td style="color: #e74c3c; font-weight: bold;">${formatCurrency(stats.profit)}</td>
+                    <td style="color: #e74c3c; font-weight: bold;">${margin}%</td>
+                    <td><span class="badge badge-danger">High Loss Anomaly</span></td>
+                </tr>
+            `;
 
-        // PASTIKAN MENCETAK KE NARRATIVE BOX, BUKAN INSIGHT BOX
-        narrativeBox.innerHTML = aiText;
+            if (stats.profit < highestLoss) {
+                highestLoss = stats.profit;
+                anomalyItem = { name: subCat, sales: stats.sales, profit: stats.profit };
+            }
+        }
+    });
 
-    } catch (error) {
-        narrativeBox.innerHTML = `<p style="color: #c0392b;"><i class='bx bx-error'></i> Gagal memuat narasi AI: ${error.message}</p>`;
+    document.getElementById("anomaly-narrative-box").classList.add("hidden");
+
+    if (anomalyCount === 0) {
+        tableHtml = `<tr><td colspan='6' style='text-align: center; color: #01b574; font-weight: 600; padding: 24px;'>✅ Unit Ekonomi Stabil. Tidak ditemukan kebocoran margin pada seluruh portofolio.</td></tr>`;
     }
+    tableBody.innerHTML = tableHtml;
+
+    fetchAIInsights(totalSales, overallMargin, topPerformer, anomalyItem);
 }
 
-
-// ==========================================
-// 🚀 FUNGSI AI: EXECUTIVE SUMMARY & STRATEGY
-// ==========================================
+// AI: EXECUTIVE SUMMARY
 async function fetchAIInsights(totalSales, overallMargin, topPerformer, anomalyItem) {
     const insightBox = document.getElementById("insight-text");
-
-    insightBox.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; color: #4318ff; font-weight: 600;">
-            <i class='bx bx-loader-alt bx-spin' style="font-size: 24px;"></i> 
-            AI Agent sedang merangkai narasi dan storytelling bisnis...
-        </div>`;
+    insightBox.innerHTML = `<div style="color: #4318ff; font-weight: 600;"><i class='bx bx-loader-alt bx-spin'></i> AI Agent sedang merangkai narasi...</div>`;
 
     const promptData = `
     Bertindaklah sebagai konsultan strategi bisnis senior. Buatlah analisis mendalam dengan pendekatan storytelling, ringkasan eksekutif, dan rencana aksi strategis berdasarkan data operasional berikut:
     - Gross Revenue: ${formatCurrency(totalSales)}
     - Blended Profit Margin: ${overallMargin}%
-    - Produk Andalan (Cash Cow): ${topPerformer ? topPerformer[0] : '-'}
-    - Anomali (Sales besar tapi merugi): ${anomalyItem ? `${anomalyItem.name} rugi ${formatCurrency(Math.abs(anomalyItem.profit))}` : 'Aman. Tidak ada yang rugi.'}
+    - Produk Andalan: ${topPerformer ? topPerformer[0] : '-'}
+    - Anomali: ${anomalyItem ? `${anomalyItem.name} rugi ${formatCurrency(Math.abs(anomalyItem.profit))}` : 'Aman.'}
 
     Buatlah tepat 3 poin dalam format HTML <li> dengan ketentuan gaya bahasa sebagai berikut:
-    1. <li><strong>📖 Business Storytelling:</strong> (Gunakan teknik penceritaan bisnis atau analogi untuk menggambarkan kondisi saat ini. Jika ada anomali produk merugi, ibaratkan seperti kapal besar yang melaju kencang berkat mesin utama [sebutkan nama Produk Andalan], namun kapal tersebut perlahan terhambat karena adanya kebocoran atau jangkar yang tersangkut akibat performa lini [sebutkan nama Produk Anomali]. Jika tidak ada anomali, ceritakan kurva pertumbuhan yang harmonis).</li>
-    2. <li><strong>📊 Executive Summary:</strong> (Berikan ringkasan metrik finansial yang objektif, padat, dan jelas mengenai pencapaian gross revenue dan margin profit rata-rata saat ini).</li>
-    3. <li><strong>💡 Strategic Action Plan:</strong> (Berikan rekomendasi aksi konkret dan taktis yang harus diambil oleh manajemen untuk mengamankan keuntungan bersih atau memperbaiki lini ekonomi yang rusak).</li>
+    1. <li><strong>📖 Business Storytelling:</strong> (Gunakan analogi bisnis untuk kondisi saat ini).</li>
+    2. <li><strong>📊 Executive Summary:</strong> (Ringkasan metrik).</li>
+    3. <li><strong>💡 Strategic Action Plan:</strong> (Rekomendasi aksi).</li>
     
-    Format MURNI HANYA 3 baris tag HTML <li> saja. DILARANG menggunakan awalan/akhiran markdown HTML (seperti \`\`\`html). Gunakan bahasa Indonesia korporat yang sangat tajam dan profesional.
+    Format MURNI HANYA 3 baris tag HTML <li> saja. DILARANG menggunakan awalan markdown HTML.
     `;
 
     try {
-        // SUDAH DIUBAH MENEMBAK KE BACKEND VERCEL
         const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
         });
-
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
 
         let aiText = data.choices[0].message.content;
-
         aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
         aiText = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         if (!aiText.includes("<li>")) {
-            const lines = aiText.split('\n').filter(line => line.trim() !== '');
-            aiText = lines.map(line => `<li>${line.replace(/^[-*]\s*/, '')}</li>`).join('');
+            aiText = aiText.split('\n').filter(line => line.trim() !== '').map(line => `<li>${line.replace(/^[-*]\s*/, '')}</li>`).join('');
         }
-
-        // PASTIKAN MENCETAK KE INSIGHT BOX
         insightBox.innerHTML = `<ul class="insight-list">${aiText}</ul>`;
-
     } catch (error) {
-        console.error("Detail Error API Groq:", error);
-        insightBox.innerHTML = `
-            <div style="background-color: #ffe0e0; padding: 15px; border-radius: 8px; border-left: 5px solid #e74c3c;">
-                <h4 style="color: #e74c3c; margin-bottom: 5px;"><i class='bx bx-error-circle'></i> API Error Detail:</h4>
-                <p style="color: #c0392b; font-family: monospace; font-size: 13px;">${error.message}</p>
-            </div>`;
+        insightBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Mohon jalankan di link Vercel, bukan Live Server.</p>`;
     }
 }
 
+// AI: NARASI TABEL
+document.getElementById("btn-narasi-ai").addEventListener("click", fetchAnomalyNarrative);
+async function fetchAnomalyNarrative() {
+    const narrativeBox = document.getElementById("anomaly-narrative-box");
+    narrativeBox.classList.remove("hidden");
 
-// ==========================================
-// 6. LOGIKA FITUR PRE-DEFINED AI CHAT
-// ==========================================
+    if (currentAnomalies.length === 0) {
+        narrativeBox.innerHTML = "<p style='color: #01b574;'><i class='bx bx-check-circle'></i> Aman. Tidak ada anomali.</p>";
+        return;
+    }
+
+    narrativeBox.innerHTML = `<div style="color: #e74c3c; font-weight: 600;"><i class='bx bx-loader-alt bx-spin'></i> AI sedang menginvestigasi anomali...</div>`;
+
+    let textAnomali = currentAnomalies.map(item => `- ${item.category} (${item.name}): Penjualan ${formatCurrency(item.sales)}, Rugi ${formatCurrency(Math.abs(item.profit))}`).join("\n");
+    const promptData = `Sebagai analis keuangan, jelaskan logis (maksimal 2 paragraf) mengapa produk ini merugi:\n${textAnomali}\nFormat MURNI tag HTML <p> dan <strong>.`;
+
+    try {
+        const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ promptData: promptData, temperature: 0.5 })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
+        let aiText = data.choices[0].message.content;
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        narrativeBox.innerHTML = aiText;
+    } catch (error) {
+        narrativeBox.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Jalankan di link Vercel.</p>`;
+    }
+}
+
+// AI: CHAT PRE-DEFINED
 const promptPills = document.querySelectorAll('.prompt-pill');
 const chatInput = document.getElementById('ai-chat-input');
 const btnSendChat = document.getElementById('btn-send-chat');
 const chatOutput = document.getElementById('ai-chat-output');
-
 let selectedPromptType = "";
 
 promptPills.forEach(pill => {
@@ -315,49 +333,16 @@ promptPills.forEach(pill => {
     });
 });
 
-btnSendChat.addEventListener('click', fetchChatInsight);
+if(btnSendChat) btnSendChat.addEventListener('click', fetchChatInsight);
 
 async function fetchChatInsight() {
-    if (!chatInput.value) {
-        alert("Silakan pilih salah satu pertanyaan cepat di bawah terlebih dahulu!");
-        return;
-    }
+    if (!chatInput.value) return alert("Pilih pertanyaan cepat di bawah!");
+    chatOutput.innerHTML = `<div style="color: #4318ff; font-weight: 600; text-align:center;"><i class='bx bx-loader-alt bx-spin'></i> Menganalisis...</div>`;
 
-    chatOutput.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #4318ff; gap: 10px;">
-            <i class='bx bx-loader-alt bx-spin' style="font-size: 32px;"></i>
-            <strong>Menganalisis data spesifik...</strong>
-        </div>`;
+    let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." : 
+selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
 
-    const catSales = {}; const regionSales = {};
-    filteredData.forEach(row => {
-        if (row.Category) catSales[row.Category] = (catSales[row.Category] || 0) + (row.Profit || 0);
-        if (row.Territory) regionSales[row.Territory] = (regionSales[row.Territory] || 0) + (row.Profit || 0);
-    });
-
-    const sortedCats = Object.entries(catSales).sort((a, b) => b[1] - a[1]);
-    const sortedRegions = Object.entries(regionSales).sort((a, b) => b[1] - a[1]);
-
-    let topCatContext = sortedCats.length > 0 ? `${sortedCats[0][0]} dengan profit ${formatCurrency(sortedCats[0][1])}` : "-";
-    let topRegionContext = sortedRegions.length > 0 ? `${sortedRegions[0][0]} dengan profit ${formatCurrency(sortedRegions[0][1])}` : "-";
-
-    let instruksiKhusus = "";
-    if (selectedPromptType === "Prioritas profit?") {
-        instruksiKhusus = `Fokuskan analisis untuk membandingkan profit margin antar Kategori produk. Diketahui kategori terbaik adalah ${topCatContext}. Jelaskan secara detail mengapa kategori ini harus diprioritaskan.`;
-    } else if (selectedPromptType === "Masalah region?") {
-        instruksiKhusus = `Fokuskan analisis pada performa antar Wilayah (Territory/Region). Diketahui region paling menguntungkan adalah ${topRegionContext}. Berikan insight mengenai logistik atau potensi pasar berdasarkan data ini.`;
-    } else {
-        instruksiKhusus = `Berikan rekomendasi taktis singkat mengenai strategi harga, diskon, atau promosi untuk bulan depan berdasarkan tren keseluruhan.`;
-    }
-
-    const promptData = `
-    Anda adalah Asisten AI Dasbor Eksekutif. 
-    Pengguna menanyakan hal berikut: "${chatInput.value}"
-    
-    Instruksi Khusus: ${instruksiKhusus}
-    
-    Berikan jawaban yang jelas, analitis, dan profesional. Gunakan format tag HTML untuk paragraf (<p>) dan daftar (<ul><li>). Jangan gunakan markdown. Hindari kata-kata pengantar yang tidak perlu.
-    `;
+    const promptData =   `Anda adalah Asisten AI. Pengguna bertanya: "${chatInput.value}". Instruksi: ${instruksiKhusus}. Format HTML <p> dan <ul><li>.`;
 
     try {
         const response = await fetch("/api/chat", {
@@ -365,19 +350,12 @@ async function fetchChatInsight() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ promptData: promptData, temperature: 0.4 })
         });
-
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Gagal menghubungi backend.");
-
         let aiText = data.choices[0].message.content;
-
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
-        aiText = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-        // PASTIKAN MENCETAK KE CHAT OUTPUT, BUKAN INSIGHT BOX
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         chatOutput.innerHTML = aiText;
-
     } catch (error) {
-        chatOutput.innerHTML = `<p style="color: #e74c3c; font-weight: 600;"><i class='bx bx-error'></i> Gagal memuat jawaban AI: ${error.message}</p>`;
+        chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: Jalankan di link Vercel.</p>`;
     }
 }
