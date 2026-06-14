@@ -339,7 +339,19 @@ async function fetchChatInsight() {
     let instruksiKhusus = selectedPromptType === "Prioritas profit?" ? "Fokuskan analisis membandingkan profit margin antar Kategori." :
         selectedPromptType === "Masalah region?" ? "Fokuskan analisis pada performa antar Wilayah." : "Berikan rekomendasi taktis singkat bulan depan.";
 
-    const promptData = `Anda adalah Asisten AI. Pengguna bertanya: "${chatInput.value}". Instruksi: ${instruksiKhusus}. Format HTML <p> dan <ul><li>.`;
+    // 1. HITUNG RINGKASAN DATA SAAT INI UNTUK AI
+    let totalSalesAI = 0, totalProfitAI = 0;
+    filteredData.forEach(row => {
+        totalSalesAI += row.Sales || 0;
+        totalProfitAI += row.Profit || 0;
+    });
+    let profitMarginAI = totalSalesAI > 0 ? ((totalProfitAI / totalSalesAI) * 100).toFixed(2) : 0;
+
+    // 2. RANGKAI KONTEKS DATA
+    const konteksData = `[DATA DASHBOARD AKTIF: Total Sales = $${totalSalesAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Total Profit = $${totalProfitAI.toLocaleString("en-US", { minimumFractionDigits: 2 })}, Profit Margin = ${profitMarginAI}%]`;
+
+    // 3. GABUNGKAN KONTEKS KE DALAM PROMPT
+    const promptData = `Anda adalah Asisten AI Data Analyst. \n${konteksData}\nPengguna bertanya: "${chatInput.value}". \nInstruksi: ${instruksiKhusus}. Berdasarkan data dashboard aktif di atas, berikan jawaban singkat, padat, dan analitik yang relevan. Format HTML <p> dan <ul><li>.`;
 
     try {
         const response = await fetch("/api/chat", {
@@ -351,9 +363,10 @@ async function fetchChatInsight() {
         if (!response.ok) throw new Error(data.error || "Gagal memuat dari backend Vercel.");
 
         let aiText = data.choices[0].message.content;
-        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        aiText = aiText.replace(/```[a-zA-Z]*\n?/g, '').replace(
+            /```/g, '').trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         chatOutput.innerHTML = aiText;
     } catch (error) {
-        chatOutput.innerHTML = `<p style="color: #e74c3c;"><i class='bx bx-error'></i> Error: ${error.message}</p>`;
+        chatOutput.innerHTML = `< p style = "color: #e74c3c;" > <i class='bx bx-error'></i> Error: ${ error.message }</p > `;
     }
 }
